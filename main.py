@@ -121,7 +121,7 @@ class ChengyuJielongPlugin(Star):
 
         # 使用 LLM API 进行成语验证
         try:
-            provider = self.ctx.get_using_provider()
+            provider = self.context.get_using_provider()
             if not provider:
                 logger.warning("⚠️ 未配置 LLM Provider！")
                 logger.warning("💡 请在 AstrBot 设置中配置 LLM Provider 以启用智能成语验证")
@@ -178,7 +178,7 @@ class ChengyuJielongPlugin(Star):
         logger.info(f"🤖 AI开始接龙，上一个成语: '{last_chengyu}'")
         
         try:
-            provider = self.ctx.get_using_provider()
+            provider = self.context.get_using_provider()
             if not provider:
                 logger.warning("⚠️ 未配置 LLM Provider，无法AI接龙")
                 return False, "未配置LLM", ""
