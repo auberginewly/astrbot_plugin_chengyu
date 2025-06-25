@@ -80,22 +80,24 @@ class ChengyuJielongPlugin(Star):
             logger.error(f"保存数据失败: {e}")
 
     def get_session_id(self, event: AstrMessageEvent) -> str:
-        """获取会话ID"""
+        """获取会话ID - 群聊以group_id为单位，私聊以user_id为单位"""
         try:
-            # 尝试不同的方法获取群组信息
-            if hasattr(event, 'is_group') and event.is_group():
-                return f"group_{event.group_id}"
-            elif hasattr(event, 'group_id') and event.group_id:
-                return f"group_{event.group_id}"
-            elif hasattr(event, 'message_type') and event.message_type == 'group':
-                return f"group_{getattr(event, 'group_id', 'unknown')}"
+            from astrbot.core.platform.message_type import MessageType
+            
+            # 使用 AstrBot 内置方法获取消息类型和相关ID
+            message_type = event.get_message_type()
+            
+            if message_type == MessageType.GROUP_MESSAGE:
+                # 群聊消息：使用群组ID作为会话ID，确保同群内所有成员共享同一会话
+                group_id = event.get_group_id()
+                return f"group_{group_id}"
             else:
-                # 私聊或其他类型
-                user_id = getattr(event, 'user_id', None) or event.get_sender_id()
+                # 私聊消息：使用发送者ID作为会话ID
+                user_id = event.get_sender_id()
                 return f"user_{user_id}"
         except Exception as e:
             logger.error(f"获取会话ID失败: {e}")
-            # fallback：使用发送者ID
+            # 兜底方案：使用发送者ID
             try:
                 return f"user_{event.get_sender_id()}"
             except:
