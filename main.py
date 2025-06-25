@@ -397,8 +397,8 @@ class ChengyuJielongPlugin(Star):
         self.user_scores[session_id][user_id]["recent_games"] = \
             self.user_scores[session_id][user_id]["recent_games"][-3:]
 
-    @filter.command("cy")
-    async def cy_command(self, event: AstrMessageEvent):
+    @filter.command("c")
+    async def c_command(self, event: AstrMessageEvent):
         """成语接龙主命令"""
         try:
             args = event.message_str.strip().split()
@@ -406,11 +406,11 @@ class ChengyuJielongPlugin(Star):
                 yield event.plain_result(
                     "🐉 成语接龙插件 v2.0\n\n"
                     "📋 可用命令：\n"
-                    "• /cy start [成语] - 开始游戏\n"
-                    "• /cy stop - 结束游戏\n"
-                    "• /cy ls - 查看最近三局积分\n"
-                    "• /cy help - 查看帮助\n\n"
-                    "💡 示例：/cy start 或 /cy start 龙飞凤舞"
+                    "• /c start [成语] - 开始游戏\n"
+                    "• /c stop - 结束游戏\n"
+                    "• /c ls - 查看最近三局积分\n"
+                    "• /c help - 查看帮助\n\n"
+                    "💡 示例：/c start 或 /c start 龙飞凤舞"
                 )
                 return
             
@@ -425,10 +425,10 @@ class ChengyuJielongPlugin(Star):
             elif subcommand == "help":
                 await self.show_help(event)
             else:
-                yield event.plain_result(f"❌ 未知命令: {subcommand}\n💡 使用 /cy 查看可用命令")
+                yield event.plain_result(f"❌ 未知命令: {subcommand}\n💡 使用 /c 查看可用命令")
                 
         except Exception as e:
-            logger.error(f"❌ 处理cy命令失败: {e}")
+            logger.error(f"❌ 处理c命令失败: {e}")
             yield event.plain_result("❌ 命令处理失败")
 
     async def start_game(self, event: AstrMessageEvent, args: List[str]):
@@ -442,7 +442,7 @@ class ChengyuJielongPlugin(Star):
             # 检查是否已有游戏在进行
             if session_id in self.active_sessions:
                 logger.info(f"🎮 会话 {session_id} 已有游戏在进行")
-                yield event.plain_result("🎮 成语接龙已在进行中！\n💡 使用 /cy stop 结束当前游戏")
+                yield event.plain_result("🎮 成语接龙已在进行中！\n💡 使用 /c stop 结束当前游戏")
                 return
 
             start_chengyu = ""
@@ -481,7 +481,7 @@ class ChengyuJielongPlugin(Star):
                 f"🎯 当前成语：{start_chengyu}\n"
                 f"👤 请接以'{start_chengyu[-1]}'开头的成语！\n"
                 f"🤖 AI会和你一起接龙\n"
-                f"📝 使用 /cy stop 结束游戏"
+                f"📝 使用 /c stop 结束游戏"
             )
 
         except Exception as e:
@@ -528,8 +528,8 @@ class ChengyuJielongPlugin(Star):
                 f"📊 本轮统计：\n"
                 f"📝 共接龙 {len(game['history'])} 个成语\n"
                 f"👥 参与人数 {len(game['user_scores'])} 人\n"
-                f"💡 使用 /cy start 开始新游戏\n"
-                f"📋 使用 /cy ls 查看积分记录"
+                f"💡 使用 /c start 开始新游戏\n"
+                f"📋 使用 /c ls 查看积分记录"
             )
 
         except Exception as e:
@@ -542,7 +542,7 @@ class ChengyuJielongPlugin(Star):
             session_id = self.get_session_id(event)
             
             if session_id not in self.user_scores or not self.user_scores[session_id]:
-                yield event.plain_result("📊 当前会话还没有积分记录\n💡 使用 /cy start 开始游戏")
+                yield event.plain_result("📊 当前会话还没有积分记录\n💡 使用 /c start 开始游戏")
                 return
 
             result = "🏆 最近三局积分记录 🏆\n\n"
@@ -577,10 +577,10 @@ class ChengyuJielongPlugin(Star):
         help_text = """🐉 成语接龙插件 v2.0 帮助 🐉
 
 📋 命令列表：
-• /cy start [成语] - 开始接龙游戏
-• /cy stop - 结束当前游戏
-• /cy ls - 查看最近三局积分
-• /cy help - 显示此帮助
+• /c start [成语] - 开始接龙游戏
+• /c stop - 结束当前游戏
+• /c ls - 查看最近三局积分
+• /c help - 显示此帮助
 
 🎮 游戏规则：
 1. 使用四字成语进行接龙
@@ -590,8 +590,8 @@ class ChengyuJielongPlugin(Star):
 5. 每成功接龙一次得1分
 
 💡 使用示例：
-/cy start          # 随机生成开始成语
-/cy start 龙飞凤舞  # 指定开始成语
+/c start          # 随机生成开始成语
+/c start 龙飞凤舞  # 指定开始成语
 然后输入：舞文弄墨
 AI会自动接：墨守成规
 你再接：规行矩步
@@ -600,7 +600,7 @@ AI会自动接：墨守成规
 🆕 v2.0 新功能：
 • 分用户积分统计（会话隔离）
 • 保存最近三局积分记录
-• 简化命令（/cy 替代 /chengyu）
+• 简化命令（/c 替代 /chengyu）
 • 智能过滤非成语消息
 • LLM随机生成开始成语
 • 排除系统命令干扰
@@ -701,7 +701,7 @@ AI会自动接：墨守成规
                     yield event.plain_result(
                         f"🎉 恭喜！AI想到的成语'{ai_chengyu}'重复了！\n"
                         f"👑 {user_name} 获得胜利！\n"
-                        f"📊 游戏结束，使用 /cy stop 保存记录"
+                        f"📊 游戏结束，使用 /c stop 保存记录"
                     )
             else:
                 # AI接龙失败，用户获胜
@@ -709,7 +709,7 @@ AI会自动接：墨守成规
                     f"🎉 恭喜！AI接龙失败了！\n"
                     f"👑 {user_name} 获得胜利！\n"
                     f"🤖 AI说：{ai_reason}\n"
-                    f"📊 游戏结束，使用 /cy stop 保存记录"
+                    f"📊 游戏结束，使用 /c stop 保存记录"
                 )
 
         except Exception as e:
