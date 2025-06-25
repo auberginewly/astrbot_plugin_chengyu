@@ -121,12 +121,28 @@ class ChengyuJielongPlugin(Star):
 
         # 使用 LLM API 进行成语验证
         try:
+            logger.info("🔍 尝试获取 LLM Provider...")
             provider = self.context.get_using_provider()
+            logger.info(f"🔍 获取到的 Provider: {provider}")
+            logger.info(f"🔍 Provider 类型: {type(provider) if provider else 'None'}")
+            
             if not provider:
                 logger.warning("⚠️ 未配置 LLM Provider！")
                 logger.warning("💡 请在 AstrBot 设置中配置 LLM Provider 以启用智能成语验证")
                 logger.warning("🔄 当前使用基础检查（仅验证格式）")
-                return True, "格式检查通过"
+                
+                # 尝试获取所有可用的 Provider
+                try:
+                    all_providers = self.context.get_all_providers()
+                    logger.info(f"🔍 所有可用 Provider: {all_providers}")
+                    if all_providers:
+                        provider = list(all_providers.values())[0]  # 使用第一个可用的
+                        logger.info(f"🔄 使用第一个可用 Provider: {provider}")
+                except Exception as e:
+                    logger.warning(f"🔍 获取所有 Provider 失败: {e}")
+                
+                if not provider:
+                    return True, "格式检查通过"
 
             logger.info(f"🤖 找到LLM Provider: {provider.__class__.__name__}")
 
@@ -178,10 +194,26 @@ class ChengyuJielongPlugin(Star):
         logger.info(f"🤖 AI开始接龙，上一个成语: '{last_chengyu}'")
         
         try:
+            logger.info("🤖 尝试获取 LLM Provider 进行接龙...")
             provider = self.context.get_using_provider()
+            logger.info(f"🤖 获取到的 Provider: {provider}")
+            logger.info(f"🤖 Provider 类型: {type(provider) if provider else 'None'}")
+            
             if not provider:
                 logger.warning("⚠️ 未配置 LLM Provider，无法AI接龙")
-                return False, "未配置LLM", ""
+                
+                # 尝试获取所有可用的 Provider
+                try:
+                    all_providers = self.context.get_all_providers()
+                    logger.info(f"🤖 所有可用 Provider: {all_providers}")
+                    if all_providers:
+                        provider = list(all_providers.values())[0]  # 使用第一个可用的
+                        logger.info(f"🤖 使用第一个可用 Provider: {provider}")
+                except Exception as e:
+                    logger.warning(f"🤖 获取所有 Provider 失败: {e}")
+                
+                if not provider:
+                    return False, "未配置LLM", ""
 
             # 获取最后一个字作为接龙字
             last_char = last_chengyu[-1]
