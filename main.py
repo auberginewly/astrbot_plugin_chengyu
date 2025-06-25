@@ -417,13 +417,17 @@ class ChengyuJielongPlugin(Star):
             subcommand = args[1].lower()
             
             if subcommand == "start":
-                await self.start_game(event, args[2:])
+                async for result in self.start_game(event, args[2:]):
+                    yield result
             elif subcommand == "stop":
-                await self.stop_game(event)
+                async for result in self.stop_game(event):
+                    yield result
             elif subcommand == "ls":
-                await self.show_recent_scores(event)
+                async for result in self.show_recent_scores(event):
+                    yield result
             elif subcommand == "help":
-                await self.show_help(event)
+                async for result in self.show_help(event):
+                    yield result
             else:
                 yield event.plain_result(f"❌ 未知命令: {subcommand}\n💡 使用 /c 查看可用命令")
                 
