@@ -75,10 +75,25 @@ class ChengyuJielongPlugin(Star):
 
     def get_session_id(self, event: AstrMessageEvent) -> str:
         """获取会话ID"""
-        if event.is_group():
-            return f"group_{event.group_id}"
-        else:
-            return f"user_{event.get_sender_id()}"
+        try:
+            # 尝试不同的方法获取群组信息
+            if hasattr(event, 'is_group') and event.is_group():
+                return f"group_{event.group_id}"
+            elif hasattr(event, 'group_id') and event.group_id:
+                return f"group_{event.group_id}"
+            elif hasattr(event, 'message_type') and event.message_type == 'group':
+                return f"group_{getattr(event, 'group_id', 'unknown')}"
+            else:
+                # 私聊或其他类型
+                user_id = getattr(event, 'user_id', None) or event.get_sender_id()
+                return f"user_{user_id}"
+        except Exception as e:
+            logger.error(f"获取会话ID失败: {e}")
+            # fallback：使用发送者ID
+            try:
+                return f"user_{event.get_sender_id()}"
+            except:
+                return "user_unknown"
 
     async def is_valid_chengyu(self, text: str) -> tuple[bool, str]:
         """使用 LLM API 检查是否为有效成语"""
@@ -230,32 +245,41 @@ class ChengyuJielongPlugin(Star):
         示例：/chengyu_start 龙飞凤舞
         """
         try:
+            logger.info(f"🎮 收到成语接龙开始命令: {event.message_str}")
+            logger.info(f"🎮 事件对象类型: {type(event)}")
+            logger.info(f"🎮 事件对象属性: {dir(event)}")
+            
             session_id = self.get_session_id(event)
+            logger.info(f"🎮 会话ID: {session_id}")
             
             # 检查是否已有游戏在进行
             if session_id in self.active_sessions:
+                logger.info(f"🎮 会话 {session_id} 已有游戏在进行")
                 yield event.plain_result("🎮 成语接龙已在进行中！\n💡 使用 /chengyu_stop 结束当前游戏")
                 return
 
             args = event.message_str.strip().split()[1:]  # 去掉命令本身
+            logger.info(f"🎮 解析参数: {args}")
+            
             start_chengyu = ""
             
             if args:
                 start_chengyu = "".join(args)
+                logger.info(f"🎮 用户指定开始成语: {start_chengyu}")
                 # 验证开始成语
                 is_valid, reason = await self.is_valid_chengyu(start_chengyu)
                 if not is_valid:
+                    logger.info(f"🎮 开始成语验证失败: {reason}")
                     yield event.plain_result(f"❌ '{start_chengyu}' {reason}\n💡 请输入一个有效的四字成语")
                     return
+                logger.info(f"🎮 开始成语验证通过: {start_chengyu}")
             else:
-                # 没有指定开始成语，AI随机开始
-                ai_success, ai_chengyu, ai_reason = await self.ai_jielong("开始")
-                if ai_success:
-                    start_chengyu = ai_chengyu
-                else:
-                    start_chengyu = "龙飞凤舞"  # 默认开始成语
+                # 没有指定开始成语，使用默认成语
+                start_chengyu = "龙飞凤舞"  # 默认开始成语
+                logger.info(f"🎮 使用默认开始成语: {start_chengyu}")
 
             # 创建游戏会话
+            logger.info(f"🎮 创建游戏会话...")
             self.active_sessions[session_id] = {
                 "current_chengyu": start_chengyu,
                 "history": [start_chengyu],
@@ -276,8 +300,8 @@ class ChengyuJielongPlugin(Star):
             )
 
         except Exception as e:
-            logger.error(f"开始成语接龙失败: {e}")
-            yield event.plain_result("❌ 开始游戏失败，请稍后再试")
+            logger.error(f"❌ 开始成语接龙失败: {e}", exc_info=True)
+            yield event.plain_result(f"❌ 开始游戏失败：{str(e)}\n💡 请查看日志或稍后再试")
 
     @filter.regex(r".*")
     async def handle_chengyu_input(self, event: AstrMessageEvent):
