@@ -139,62 +139,52 @@ class ChengyuJielongPlugin(Star):
                 return False
                 
         return True
-
-    async def generate_random_chengyu(self) -> str:
-        """使用LLM生成随机开始成语"""
-        try:
-            logger.info("🎲 尝试生成随机开始成语...")
-            provider = self.context.get_using_provider()
-            logger.info(f"🎲 获取到的 Provider: {provider}")
-            
-            if not provider:
-                # 尝试获取所有可用的 Provider
-                try:
-                    all_providers = self.context.get_all_providers()
-                    logger.info(f"🎲 所有可用 Provider: {all_providers}")
-                    if all_providers:
-                        provider = list(all_providers.values())[0]  # 使用第一个可用的
-                        logger.info(f"🎲 使用第一个可用 Provider: {provider}")
-                except Exception as e:
-                    logger.warning(f"🎲 获取所有 Provider 失败: {e}")
-                
-                if not provider:
-                    logger.warning("⚠️ 无法获取 LLM Provider，使用默认成语")
-                    return "龙飞凤舞"
-
-            # 构造生成成语的提示词
-            prompt = """请随机生成一个常见的四字成语作为成语接龙的开始。
-
-要求：
-1. 必须是标准的四字成语
-2. 选择比较常见、容易接龙的成语
-3. 只回答成语本身，不要解释
-4. 确保成语正确且有意义
-
-请回答一个成语："""
-
-            logger.info("🚀 开始调用LLM生成随机成语...")
-            response = await provider.text_chat(prompt=prompt)
-            logger.info("✅ LLM生成成语调用完成")
-
-            if response and response.completion_text:
-                generated = response.completion_text.strip()
-                # 清理响应，提取成语
-                generated = re.sub(r"[^\u4e00-\u9fff]", "", generated)
-                
-                if len(generated) == 4:
-                    logger.info(f"🎉 LLM生成成语成功: '{generated}'")
-                    return generated
-                else:
-                    logger.warning(f"⚠️ LLM生成的成语格式错误: '{generated}'，使用默认成语")
-                    return "龙飞凤舞"
+            if os.path.exists(self.history_file):
+                with open(self.history_file, "r", encoding="utf-8") as f:
+                    self.all_history = json.load(f)
             else:
-                logger.warning("⚠️ LLM响应为空，使用默认成语")
-                return "龙飞凤舞"
+                self.all_history = {}
 
         except Exception as e:
-            logger.error(f"❌ 生成随机成语失败: {e}")
-            return "龙飞凤舞"
+            logger.error(f"加载数据失败: {e}")
+            self.all_scores = {}
+            self.all_history = {}
+
+    def save_data(self):
+        """保存持久化数据"""
+        try:
+            # 保存积分数据
+            with open(self.scores_file, "w", encoding="utf-8") as f:
+                json.dump(self.all_scores, f, ensure_ascii=False, indent=2)
+
+            # 保存接龙历史
+            with open(self.history_file, "w", encoding="utf-8") as f:
+                json.dump(self.all_history, f, ensure_ascii=False, indent=2)
+
+        except Exception as e:
+            logger.error(f"保存数据失败: {e}")
+
+    def get_session_id(self, event: AstrMessageEvent) -> str:
+        """获取会话ID"""
+        try:
+            # 尝试不同的方法获取群组信息
+            if hasattr(event, 'is_group') and event.is_group():
+                return f"group_{event.group_id}"
+            elif hasattr(event, 'group_id') and event.group_id:
+                return f"group_{event.group_id}"
+            elif hasattr(event, 'message_type') and event.message_type == 'group':
+                return f"group_{getattr(event, 'group_id', 'unknown')}"
+            else:
+                # 私聊或其他类型
+                user_id = getattr(event, 'user_id', None) or event.get_sender_id()
+                return f"user_{user_id}"
+        except Exception as e:
+            logger.error(f"获取会话ID失败: {e}")
+            # fallback：使用发送者ID
+            try:
+                return f"user_{event.get_sender_id()}"
+            except:
+                return "user_unknown"
 
     async def is_valid_chengyu(self, text: str) -> tuple[bool, str]:
         """使用 LLM API 检查是否为有效成语"""
@@ -370,71 +360,17 @@ class ChengyuJielongPlugin(Star):
         else:
             return False, f"无法接龙：'{last_chengyu}'的尾字是'{last_char}'，'{new_chengyu}'的首字是'{first_char}'"
 
-    def add_user_score(self, session_id: str, user_id: str, user_name: str, score: int):
-        """添加用户积分到最近三局记录"""
-        if session_id not in self.user_scores:
-            self.user_scores[session_id] = {}
+    @filter.command("chengyu_start")
+    async def start_chengyu(self, event: AstrMessageEvent):
+        """开始成语接龙
         
-        if user_id not in self.user_scores[session_id]:
-            self.user_scores[session_id][user_id] = {
-                "name": user_name,
-                "recent_games": []
-            }
-        
-        # 更新用户姓名（可能会变化）
-        self.user_scores[session_id][user_id]["name"] = user_name
-        
-        # 添加本局积分
-        game_data = {
-            "score": score,
-            "timestamp": datetime.now().isoformat(),
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M")
-        }
-        
-        self.user_scores[session_id][user_id]["recent_games"].append(game_data)
-        
-        # 只保留最近3局
-        self.user_scores[session_id][user_id]["recent_games"] = \
-            self.user_scores[session_id][user_id]["recent_games"][-3:]
-
-    @filter.command("cy")
-    async def cy_command(self, event: AstrMessageEvent):
-        """成语接龙主命令"""
+        指令格式：/chengyu_start [开始成语]
+        示例：/chengyu_start 龙飞凤舞
+        """
         try:
-            args = event.message_str.strip().split()
-            if len(args) < 2:
-                yield event.plain_result(
-                    "🐉 成语接龙插件 v2.0\n\n"
-                    "📋 可用命令：\n"
-                    "• /cy start [成语] - 开始游戏\n"
-                    "• /cy stop - 结束游戏\n"
-                    "• /cy ls - 查看最近三局积分\n"
-                    "• /cy help - 查看帮助\n\n"
-                    "💡 示例：/cy start 或 /cy start 龙飞凤舞"
-                )
-                return
-            
-            subcommand = args[1].lower()
-            
-            if subcommand == "start":
-                await self.start_game(event, args[2:])
-            elif subcommand == "stop":
-                await self.stop_game(event)
-            elif subcommand == "ls":
-                await self.show_recent_scores(event)
-            elif subcommand == "help":
-                await self.show_help(event)
-            else:
-                yield event.plain_result(f"❌ 未知命令: {subcommand}\n💡 使用 /cy 查看可用命令")
-                
-        except Exception as e:
-            logger.error(f"❌ 处理cy命令失败: {e}")
-            yield event.plain_result("❌ 命令处理失败")
-
-    async def start_game(self, event: AstrMessageEvent, args: List[str]):
-        """开始成语接龙游戏"""
-        try:
-            logger.info(f"🎮 收到成语接龙开始命令，参数: {args}")
+            logger.info(f"🎮 收到成语接龙开始命令: {event.message_str}")
+            logger.info(f"🎮 事件对象类型: {type(event)}")
+            logger.info(f"🎮 事件对象属性: {dir(event)}")
             
             session_id = self.get_session_id(event)
             logger.info(f"🎮 会话ID: {session_id}")
@@ -442,9 +378,12 @@ class ChengyuJielongPlugin(Star):
             # 检查是否已有游戏在进行
             if session_id in self.active_sessions:
                 logger.info(f"🎮 会话 {session_id} 已有游戏在进行")
-                yield event.plain_result("🎮 成语接龙已在进行中！\n💡 使用 /cy stop 结束当前游戏")
+                yield event.plain_result("🎮 成语接龙已在进行中！\n💡 使用 /chengyu_stop 结束当前游戏")
                 return
 
+            args = event.message_str.strip().split()[1:]  # 去掉命令本身
+            logger.info(f"🎮 解析参数: {args}")
+            
             start_chengyu = ""
             
             if args:
@@ -458,20 +397,19 @@ class ChengyuJielongPlugin(Star):
                     return
                 logger.info(f"🎮 开始成语验证通过: {start_chengyu}")
             else:
-                # 没有指定开始成语，使用LLM生成
-                logger.info(f"🎮 生成随机开始成语...")
-                yield event.plain_result("🎲 正在生成随机开始成语，请稍候...")
-                start_chengyu = await self.generate_random_chengyu()
-                logger.info(f"🎮 生成的开始成语: {start_chengyu}")
+                # 没有指定开始成语，使用默认成语
+                start_chengyu = "龙飞凤舞"  # 默认开始成语
+                logger.info(f"🎮 使用默认开始成语: {start_chengyu}")
 
             # 创建游戏会话
             logger.info(f"🎮 创建游戏会话...")
             self.active_sessions[session_id] = {
                 "current_chengyu": start_chengyu,
                 "history": [start_chengyu],
-                "user_scores": {},  # 当前游戏中的用户积分
+                "user_count": 0,
+                "ai_count": 1,
                 "start_time": datetime.now().isoformat(),
-                "last_player": "AI"
+                "last_player": "AI" if not args else "USER"
             }
 
             logger.info(f"🎮 会话 {session_id} 开始成语接龙，开始成语: {start_chengyu}")
@@ -481,139 +419,12 @@ class ChengyuJielongPlugin(Star):
                 f"🎯 当前成语：{start_chengyu}\n"
                 f"👤 请接以'{start_chengyu[-1]}'开头的成语！\n"
                 f"🤖 AI会和你一起接龙\n"
-                f"📝 使用 /cy stop 结束游戏"
+                f"📝 使用 /chengyu_stop 结束游戏"
             )
 
         except Exception as e:
             logger.error(f"❌ 开始成语接龙失败: {e}", exc_info=True)
             yield event.plain_result(f"❌ 开始游戏失败：{str(e)}\n💡 请查看日志或稍后再试")
-
-    async def stop_game(self, event: AstrMessageEvent):
-        """停止成语接龙"""
-        try:
-            session_id = self.get_session_id(event)
-            
-            if session_id not in self.active_sessions:
-                yield event.plain_result("📴 当前没有进行中的成语接龙游戏")
-                return
-
-            game = self.active_sessions[session_id]
-            
-            # 保存每个用户的积分到历史记录
-            for user_id, score in game["user_scores"].items():
-                user_name = score.get("name", f"用户{user_id}")
-                self.add_user_score(session_id, user_id, user_name, score["score"])
-            
-            # 保存游戏历史
-            if session_id not in self.game_history:
-                self.game_history[session_id] = []
-            
-            self.game_history[session_id].append({
-                "start_time": game["start_time"],
-                "end_time": datetime.now().isoformat(),
-                "history": game["history"],
-                "total_rounds": len(game["history"]) - 1,  # 减去开始成语
-                "participants": len(game["user_scores"])
-            })
-            
-            # 只保留最近10次游戏记录
-            self.game_history[session_id] = self.game_history[session_id][-10:]
-            
-            del self.active_sessions[session_id]
-            self.save_data()
-            logger.info(f"🎮 会话 {session_id} 游戏结束")
-            
-            yield event.plain_result(
-                f"🛑 成语接龙已结束！\n"
-                f"📊 本轮统计：\n"
-                f"📝 共接龙 {len(game['history'])} 个成语\n"
-                f"👥 参与人数 {len(game['user_scores'])} 人\n"
-                f"💡 使用 /cy start 开始新游戏\n"
-                f"📋 使用 /cy ls 查看积分记录"
-            )
-
-        except Exception as e:
-            logger.error(f"停止成语接龙失败: {e}")
-            yield event.plain_result("❌ 停止游戏失败")
-
-    async def show_recent_scores(self, event: AstrMessageEvent):
-        """显示最近三局积分"""
-        try:
-            session_id = self.get_session_id(event)
-            
-            if session_id not in self.user_scores or not self.user_scores[session_id]:
-                yield event.plain_result("📊 当前会话还没有积分记录\n💡 使用 /cy start 开始游戏")
-                return
-
-            result = "🏆 最近三局积分记录 🏆\n\n"
-            
-            for user_id, user_data in self.user_scores[session_id].items():
-                user_name = user_data["name"]
-                recent_games = user_data["recent_games"]
-                
-                if not recent_games:
-                    continue
-                    
-                result += f"👤 {user_name}:\n"
-                total_score = 0
-                
-                for i, game in enumerate(recent_games, 1):
-                    score = game["score"]
-                    date = game["date"]
-                    total_score += score
-                    result += f"  第{i}局: {score}分 ({date})\n"
-                
-                avg_score = round(total_score / len(recent_games), 1)
-                result += f"  📈 总计: {total_score}分 | 平均: {avg_score}分\n\n"
-
-            yield event.plain_result(result)
-
-        except Exception as e:
-            logger.error(f"显示积分记录失败: {e}")
-            yield event.plain_result("❌ 获取积分记录失败")
-
-    async def show_help(self, event: AstrMessageEvent):
-        """显示帮助信息"""
-        help_text = """🐉 成语接龙插件 v2.0 帮助 🐉
-
-📋 命令列表：
-• /cy start [成语] - 开始接龙游戏
-• /cy stop - 结束当前游戏
-• /cy ls - 查看最近三局积分
-• /cy help - 显示此帮助
-
-🎮 游戏规则：
-1. 使用四字成语进行接龙
-2. 下一个成语的首字必须是上一个成语的尾字
-3. 不能重复使用已用过的成语
-4. AI会自动参与接龙
-5. 每成功接龙一次得1分
-
-💡 使用示例：
-/cy start          # 随机生成开始成语
-/cy start 龙飞凤舞  # 指定开始成语
-然后输入：舞文弄墨
-AI会自动接：墨守成规
-你再接：规行矩步
-...依此类推
-
-🆕 v2.0 新功能：
-• 分用户积分统计（会话隔离）
-• 保存最近三局积分记录
-• 简化命令（/cy 替代 /chengyu）
-• 智能过滤非成语消息
-• LLM随机生成开始成语
-• 排除系统命令干扰
-
-🤖 智能功能：
-• LLM验证成语有效性
-• AI智能接龙对战
-• 自动判断接龙正确性
-• 随机生成开始成语
-
-开始你的成语接龙之旅吧！🚀"""
-
-        yield event.plain_result(help_text)
 
     @filter.regex(r".*")
     async def handle_chengyu_input(self, event: AstrMessageEvent):
@@ -630,16 +441,10 @@ AI会自动接：墨守成规
             # 跳过命令
             if message_text.startswith("/"):
                 return
-            
-            # 快速过滤：不是潜在成语的直接跳过
-            if not self.is_potential_chengyu(message_text):
-                return
 
             game = self.active_sessions[session_id]
             user_id = event.get_sender_id()
             user_name = event.get_sender_name()
-
-            logger.info(f"👤 用户 {user_name} 尝试接龙: '{message_text}'")
 
             # 验证用户输入的成语
             is_valid, reason = await self.is_valid_chengyu(message_text)
@@ -661,20 +466,22 @@ AI会自动接：墨守成规
             # 用户接龙成功
             game["current_chengyu"] = message_text
             game["history"].append(message_text)
+            game["user_count"] += 1
             game["last_player"] = "USER"
 
-            # 更新当前游戏积分
-            if user_id not in game["user_scores"]:
-                game["user_scores"][user_id] = {"name": user_name, "score": 0}
-            game["user_scores"][user_id]["score"] += 1
-            game["user_scores"][user_id]["name"] = user_name  # 更新用户名
-
             logger.info(f"👤 用户 {user_name} 接龙成功: {message_text}")
+
+            # 更新积分
+            if session_id not in self.all_scores:
+                self.all_scores[session_id] = {}
+            if user_id not in self.all_scores[session_id]:
+                self.all_scores[session_id][user_id] = {"name": user_name, "score": 0}
+            self.all_scores[session_id][user_id]["score"] += 1
 
             yield event.plain_result(
                 f"✅ {user_name} 接龙成功！\n"
                 f"📝 成语：{message_text}\n"
-                f"🏆 本局积分：{game['user_scores'][user_id]['score']}\n"
+                f"🏆 你的积分：{self.all_scores[session_id][user_id]['score']}\n"
                 f"🤖 AI正在思考..."
             )
 
@@ -687,6 +494,7 @@ AI会自动接：墨守成规
                 if ai_chengyu not in game["history"]:
                     game["current_chengyu"] = ai_chengyu
                     game["history"].append(ai_chengyu)
+                    game["ai_count"] += 1
                     game["last_player"] = "AI"
 
                     logger.info(f"🤖 AI接龙成功: {ai_chengyu}")
@@ -694,31 +502,148 @@ AI会自动接：墨守成规
                     yield event.plain_result(
                         f"🤖 AI接龙：{ai_chengyu}\n"
                         f"👤 请接以'{ai_chengyu[-1]}'开头的成语！\n"
-                        f"📊 当前轮数：{len(game['history'])-1} 轮"
+                        f"📊 当前轮数：用户 {game['user_count']} | AI {game['ai_count']}"
                     )
                 else:
                     # AI重复了，用户获胜
                     yield event.plain_result(
                         f"🎉 恭喜！AI想到的成语'{ai_chengyu}'重复了！\n"
                         f"👑 {user_name} 获得胜利！\n"
-                        f"📊 游戏结束，使用 /cy stop 保存记录"
+                        f"📊 最终比分：用户 {game['user_count']} | AI {game['ai_count']}"
                     )
+                    self._end_game(session_id)
             else:
                 # AI接龙失败，用户获胜
                 yield event.plain_result(
                     f"🎉 恭喜！AI接龙失败了！\n"
                     f"👑 {user_name} 获得胜利！\n"
                     f"🤖 AI说：{ai_reason}\n"
-                    f"📊 游戏结束，使用 /cy stop 保存记录"
+                    f"📊 最终比分：用户 {game['user_count']} | AI {game['ai_count']}"
                 )
+                self._end_game(session_id)
+
+            # 保存数据
+            self.save_data()
 
         except Exception as e:
             logger.error(f"处理成语输入失败: {e}")
+
+    def _end_game(self, session_id: str):
+        """结束游戏"""
+        if session_id in self.active_sessions:
+            game = self.active_sessions[session_id]
+            
+            # 保存游戏历史
+            if session_id not in self.all_history:
+                self.all_history[session_id] = []
+            
+            self.all_history[session_id].append({
+                "start_time": game["start_time"],
+                "end_time": datetime.now().isoformat(),
+                "history": game["history"],
+                "user_count": game["user_count"],
+                "ai_count": game["ai_count"],
+                "winner": game["last_player"]
+            })
+            
+            # 只保留最近10次游戏记录
+            self.all_history[session_id] = self.all_history[session_id][-10:]
+            
+            del self.active_sessions[session_id]
+            logger.info(f"🎮 会话 {session_id} 游戏结束")
+
+    @filter.command("chengyu_stop")
+    async def stop_chengyu(self, event: AstrMessageEvent):
+        """停止成语接龙"""
+        try:
+            session_id = self.get_session_id(event)
+            
+            if session_id not in self.active_sessions:
+                yield event.plain_result("📴 当前没有进行中的成语接龙游戏")
+                return
+
+            game = self.active_sessions[session_id]
+            self._end_game(session_id)
+            self.save_data()
+            
+            yield event.plain_result(
+                f"🛑 成语接龙已结束！\n"
+                f"📊 本轮统计：用户 {game['user_count']} | AI {game['ai_count']}\n"
+                f"📝 共接龙 {len(game['history'])} 个成语\n"
+                f"💡 使用 /chengyu_start 开始新游戏"
+            )
+
+        except Exception as e:
+            logger.error(f"停止成语接龙失败: {e}")
+            yield event.plain_result("❌ 停止游戏失败")
+
+    @filter.command("chengyu_score")
+    async def show_scores(self, event: AstrMessageEvent):
+        """显示积分榜"""
+        try:
+            session_id = self.get_session_id(event)
+            
+            if session_id not in self.all_scores or not self.all_scores[session_id]:
+                yield event.plain_result("📊 当前会话还没有积分记录\n💡 使用 /chengyu_start 开始游戏")
+                return
+
+            # 按积分排序
+            sorted_scores = sorted(
+                self.all_scores[session_id].items(),
+                key=lambda x: x[1]["score"],
+                reverse=True
+            )
+
+            result = "🏆 成语接龙积分榜 🏆\n\n"
+            for i, (user_id, data) in enumerate(sorted_scores[:10], 1):
+                emoji = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+                result += f"{emoji} {data['name']}: {data['score']} 分\n"
+
+            yield event.plain_result(result)
+
+        except Exception as e:
+            logger.error(f"显示积分榜失败: {e}")
+            yield event.plain_result("❌ 获取积分榜失败")
+
+    @filter.command("chengyu_help")
+    async def show_help(self, event: AstrMessageEvent):
+        """显示帮助信息"""
+        help_text = """🐉 成语接龙插件帮助 🐉
+
+📋 指令列表：
+• /chengyu_start [成语] - 开始接龙游戏
+• /chengyu_stop - 结束当前游戏
+• /chengyu_score - 查看积分榜
+• /chengyu_help - 显示此帮助
+
+🎮 游戏规则：
+1. 使用四字成语进行接龙
+2. 下一个成语的首字必须是上一个成语的尾字
+3. 不能重复使用已用过的成语
+4. AI会自动参与接龙
+5. 每成功接龙一次得1分
+
+💡 使用示例：
+/chengyu_start 龙飞凤舞
+然后输入：舞文弄墨
+AI会自动接：墨守成规
+你再接：规行矩步
+...依此类推
+
+🤖 智能功能：
+• LLM验证成语有效性
+• AI智能接龙对战
+• 自动判断接龙正确性
+• 积分统计和排行榜
+
+开始你的成语接龙之旅吧！🚀"""
+
+        yield event.plain_result(help_text)
 
     async def terminate(self):
         """插件终止时的清理工作"""
         try:
             self.save_data()
-            logger.info("🔗 成语接龙插件 v2.0 已终止")
+            logger.info("🔗 成语接龙插件已终止")
         except Exception as e:
             logger.error(f"插件终止时出错: {e}")
