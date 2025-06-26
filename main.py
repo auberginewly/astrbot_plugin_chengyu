@@ -11,7 +11,7 @@ from astrbot.api import logger
 from astrbot.core.message.components import At
 
 
-@register("chengyu", "auberginewly", "支持LLM智能接龙的成语接龙插件", "2.0.0")
+@register("chengyu", "auberginewly", "支持LLM智能接龙的成语接龙插件", "2.0.1")
 class ChengyuJielongPlugin(Star):
     """成语接龙插件 v2.0
 
