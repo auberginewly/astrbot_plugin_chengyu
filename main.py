@@ -24,19 +24,39 @@ class ChengyuJielongPlugin(Star):
         self.active_sessions: Dict[str, dict] = {}
 
         # 数据存储路径
-        self.data_dir = os.path.join("data", "chengyu")
-        self.user_scores_file = os.path.join(self.data_dir, "user_scores.json")
-        self.game_history_file = os.path.join(
-            self.data_dir, "game_history.json")
         self.curr_dir = os.path.dirname(os.path.abspath(__file__))
         self.db_file = os.path.join(self.curr_dir, "c.db")
-
-        # 确保数据目录存在
-        os.makedirs(self.data_dir, exist_ok=True)
 
         # 初始化数据库连接
         self.conn = sqlite3.connect(self.db_file)
         self.cursor = self.conn.cursor()
+
+        # 创建用户积分表和游戏历史表
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_scores (
+                session_id TEXT,
+                user_id TEXT,
+                user_name TEXT,
+                score INTEGER,
+                timestamp TEXT,
+                date TEXT,
+                PRIMARY KEY (session_id, user_id, timestamp)
+            )
+        """)
+
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS game_history (
+                session_id TEXT,
+                start_time TEXT,
+                end_time TEXT,
+                history TEXT,  -- JSON array of chengyu
+                total_rounds INTEGER,
+                participants INTEGER,
+                PRIMARY KEY (session_id, start_time)
+            )
+        """)
+
+        self.conn.commit()
 
         # 用户数据结构: {session_id: {user_id: {"name": str, "recent_games": [game_data]}}}
         self.user_scores = {}
@@ -51,21 +71,52 @@ class ChengyuJielongPlugin(Star):
         logger.info("🔗 成语接龙插件 v2.0 初始化完成")
 
     def load_data(self):
-        """加载持久化数据"""
+        """从数据库加载数据"""
         try:
             # 加载用户积分数据
-            if os.path.exists(self.user_scores_file):
-                with open(self.user_scores_file, "r", encoding="utf-8") as f:
-                    self.user_scores = json.load(f)
-            else:
-                self.user_scores = {}
+            self.user_scores = {}
+            self.cursor.execute("""
+                SELECT session_id, user_id, user_name, score, timestamp, date
+                FROM user_scores
+                ORDER BY timestamp DESC
+            """)
+            for row in self.cursor.fetchall():
+                session_id, user_id, user_name, score, timestamp, date = row
+                if session_id not in self.user_scores:
+                    self.user_scores[session_id] = {}
+                if user_id not in self.user_scores[session_id]:
+                    self.user_scores[session_id][user_id] = {
+                        "name": user_name,
+                        "recent_games": []
+                    }
+                # 只保留最近3局
+                if len(self.user_scores[session_id][user_id]["recent_games"]) < 3:
+                    self.user_scores[session_id][user_id]["recent_games"].append({
+                        "score": score,
+                        "timestamp": timestamp,
+                        "date": date
+                    })
 
             # 加载游戏历史
-            if os.path.exists(self.game_history_file):
-                with open(self.game_history_file, "r", encoding="utf-8") as f:
-                    self.game_history = json.load(f)
-            else:
-                self.game_history = {}
+            self.game_history = {}
+            self.cursor.execute("""
+                SELECT session_id, start_time, end_time, history, total_rounds, participants
+                FROM game_history
+                ORDER BY start_time DESC
+            """)
+            for row in self.cursor.fetchall():
+                session_id, start_time, end_time, history, total_rounds, participants = row
+                if session_id not in self.game_history:
+                    self.game_history[session_id] = []
+                # 只保留最近10局
+                if len(self.game_history[session_id]) < 10:
+                    self.game_history[session_id].append({
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "history": json.loads(history),
+                        "total_rounds": total_rounds,
+                        "participants": participants
+                    })
 
         except Exception as e:
             logger.error(f"加载数据失败: {e}")
@@ -73,15 +124,42 @@ class ChengyuJielongPlugin(Star):
             self.game_history = {}
 
     def save_data(self):
-        """保存持久化数据"""
+        """保存数据到数据库"""
         try:
             # 保存用户积分数据
-            with open(self.user_scores_file, "w", encoding="utf-8") as f:
-                json.dump(self.user_scores, f, ensure_ascii=False, indent=2)
+            for session_id, users in self.user_scores.items():
+                for user_id, user_data in users.items():
+                    for game in user_data["recent_games"]:
+                        self.cursor.execute("""
+                            INSERT OR REPLACE INTO user_scores
+                            (session_id, user_id, user_name, score, timestamp, date)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """, (
+                            session_id,
+                            user_id,
+                            user_data["name"],
+                            game["score"],
+                            game["timestamp"],
+                            game["date"]
+                        ))
 
             # 保存游戏历史
-            with open(self.game_history_file, "w", encoding="utf-8") as f:
-                json.dump(self.game_history, f, ensure_ascii=False, indent=2)
+            for session_id, games in self.game_history.items():
+                for game in games:
+                    self.cursor.execute("""
+                        INSERT OR REPLACE INTO game_history
+                        (session_id, start_time, end_time, history, total_rounds, participants)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        session_id,
+                        game["start_time"],
+                        game["end_time"],
+                        json.dumps(game["history"], ensure_ascii=False),
+                        game["total_rounds"],
+                        game["participants"]
+                    ))
+
+            self.conn.commit()
 
         except Exception as e:
             logger.error(f"保存数据失败: {e}")
@@ -209,7 +287,7 @@ class ChengyuJielongPlugin(Star):
             last_valid, last_info = self.get_chengyu_info(last_chengyu)
             if not last_valid:
                 return False, "接龙失败", "无法获取上一个成语的拼音信息"
-            
+
             last_pinyin = last_info["last"]  # 最后一个字的拼音
             logger.info(f"🎯 需要接的拼音: '{last_pinyin}'")
 
@@ -603,7 +681,6 @@ AI会自动接：至理名言
                 f"📝 成语：{message_text}\n"
                 f"🏆 本局积分：{game['user_scores'][user_id]['score']}\n"
             )
-
 
             robot_success, robot_chengyu, robot_reason = await self.robot_jielong(message_text)
             if robot_success:
