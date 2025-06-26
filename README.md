@@ -134,6 +134,10 @@
 - 🌟 Star: [GitHub Repository](https://github.com/auberginewly/astrbot_plugin_chengyu)
 - 🔄 Pull Requests Welcome!
 
+## 🤝 鸣谢
+
+- [idiom-database](https://github.com/crazywhalecc/idiom-database) - 优质的成语数据库，拥有30000+个成语，提供首尾拼音数据支持
+
 ## 📄 许可证
 
 本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
