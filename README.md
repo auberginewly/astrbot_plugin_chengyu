@@ -1,13 +1,13 @@
-# 🐉 AstrBot 成语接龙插件 v2.0
+# 🐉 AstrBot 成语接龙插件 v2.0.1
 
 > 一个支持AI智能对战的成语接龙插件，全新升级！让传统文字游戏更有趣！
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![AstrBot](https://img.shields.io/badge/AstrBot-3.5+-green.svg)](https://github.com/Soulter/AstrBot)
 [![Python](https://img.shields.io/badge/Python-3.10+-yellow.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2.0.0-red.svg)](https://github.com/auberginewly/astrbot_plugin_chengyu)
+[![Version](https://img.shields.io/badge/version-2.0.1-red.svg)](https://github.com/auberginewly/astrbot_plugin_chengyu)
 
-## 🆕 v2.0 重大更新
+## 🆕 v2.0.1 重大更新
 
 ### 🎯 核心功能优化
 - ✅ **分用户积分统计** - 每个用户独立记录最近三局积分
@@ -101,7 +101,7 @@
 ```
 
 #### 方式2：手动安装
-1. 下载插件包：`astrbot_plugin_chengyu_v2.0.zip`
+1. 下载插件包：`astrbot_plugin_chengyu_v2.0.1.zip`
 2. 解压到插件目录：`data/plugins/`
 3. 重启AstrBot服务
 
@@ -113,7 +113,14 @@
 
 ## 📈 更新日志
 
-### v2.0.0 (2025-06-25)
+### v2.0.1 (2024-12-26)
+- 🔧 修复 @filter 装饰器参数传递问题
+- 🔧 优化事件处理方法签名兼容性
+- 🆕 新增数据库随机抽取成语功能
+- 📊 完善会话隔离逻辑
+- ✅ 提升插件稳定性和兼容性
+
+### v2.0.0 (2024-12-25)
 - 🆕 全新的用户积分系统
 - 🆕 简化命令（/c 系列）
 - 🆕 智能消息过滤机制
